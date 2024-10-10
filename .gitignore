@@ -1,3 +1,9 @@
+simsational/old_sims/
+simsational/old_sims/*
+simsational/pytorch_tabnet/
+simsational/pytorch_tabnet/*
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

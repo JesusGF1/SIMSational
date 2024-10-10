@@ -1,6 +1,6 @@
 import anndata as an 
 import scanpy as sc 
-from scsims import SIMS 
+from simsational import SIMS 
 import torch
 
 device = "cuda" if torch.cuda.is_available() else None
