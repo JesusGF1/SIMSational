@@ -22,8 +22,8 @@ HERE = pathlib.Path(__file__).parent
 README = (HERE / "README.md").read_text()
 
 setup(
-    author="Julian Lehrer",
-    author_email="jmlehrer@ucsc.edu",
+    author="Jesus Gonzalez Ferrer",
+    author_email="jgonz373@ucsc.edu",
     python_requires=">=3.9",
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -35,20 +35,20 @@ setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
     ],
-    description="Scalable, Interpretable Deep Learning for Single-Cell RNA-seq Classification",
+    description="Foundational SIMS",
     install_requires=requirements.copy(),
     license="MIT license",
     long_description=README,
     long_description_content_type="text/markdown",
     include_package_data=True,
-    keywords="scsims",
-    name="scsims",
+    keywords="simsational",
+    name="simsational",
     packages=find_packages(exclude=["tests"]),
     setup_requires=setup_requirements,
     test_suite="tests",
     tests_require=test_requirements,
-    url="https://github.com/braingeneers/sims",
-    version="3.0.6",
+    url="https://github.com/JesusGF1/SIMSational",
+    version="1.0.0",
     zip_safe=False,
 )
 

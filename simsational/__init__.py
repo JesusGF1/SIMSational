@@ -1,9 +1,11 @@
 from .data import *
 from .inference import DatasetForInference
 from .lightning_train import *
-from .model import *
+from .multitask_model import *
 from .networking import UploadCallback
-from .scvi_api import SIMS
+from .pretraining import *
+from .simsational_api import SIMSPretrainedAPI
+from tab_network import *
 from .temperature_scaling import *
 
 __all__ = [
@@ -11,5 +13,6 @@ __all__ = [
     "SIMSClassifier",
     "DataModule",
     "UploadCallback",
-    "DatasetForInference"
+    "DatasetForInference",
+    "SIMSPretraining",
 ]
