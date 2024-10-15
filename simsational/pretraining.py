@@ -3,15 +3,15 @@ from pytorch_tabnet.utils import create_group_matrix, create_explain_matrix
 from pytorch_tabnet.metrics import UnsupervisedLoss
 import pytorch_lightning as pl
 import torch
-from typing import Callable, List
+from typing import Callable, List, Union
 from dataclasses import field
 import anndata as an
 from scipy.sparse import csr_matrix
 import os
 from simsational.data import CollateLoader
 from simsational.inference import DatasetForInference
-
-
+import numpy as np
+from tqdm import tqdm
 
 
 class SIMSPretraining(pl.LightningModule):
@@ -37,18 +37,18 @@ class SIMSPretraining(pl.LightningModule):
         
         #Things inherited from SIMS
         genes: list[str] = None,
-        cells: list[str] = None,
+        #cells: list[str] = None,
         label_encoder: Callable = None,
 
         #You can group features to consider them as a simmilar feature. We could use this for gene modules
         #But for our first implementation we will not use this. Default to None for now
-        grouped_features: List[List[int]] = None,
+        grouped_features: List[List[int]] = [],
 
         loss: Callable = None, #Defaults to UnsupervisedLoss
-        optim_params=None, #Defaults to Adam 
+        optim_params=None, #Defaults to AdamW 
         scheduler_params=None, #Defaults to ReduceLROnPlateau
         ):
-
+        super(SIMSPretraining, self).__init__()
         self.save_hyperparameters()
         self.genes = genes
         self.label_encoder = label_encoder
@@ -62,7 +62,7 @@ class SIMSPretraining(pl.LightningModule):
         if loss is None:
             self.loss = UnsupervisedLoss
         
-        #Add metrics
+        #Add metrics/ Log embeddings and then have a function to calculate the ARI
         self.metrics = {
             "train": {},
             "val": {},
@@ -72,8 +72,8 @@ class SIMSPretraining(pl.LightningModule):
             optim_params
             if optim_params is not None
             else {
-                "optimizer": torch.optim.Adam,
-                "lr": 0.01,
+                "optimizer": torch.optim.AdamW,
+                "lr": 0.001,
                 "weight_decay": 0.01,
             }
         )
@@ -88,12 +88,10 @@ class SIMSPretraining(pl.LightningModule):
         )
 
         #This creates group matrices for the pretraining network
-        self.grouped_features = grouped_features
-        if self.grouped_features is not None:
-            self.group_matrix = create_group_matrix(self.grouped_features, self.input_dim)
-        else:
-            self.group_matrix = None
-            
+        self.grouped_features = grouped_features #This can not be none
+        print(f"Grouped features: {self.grouped_features}")
+        self.group_matrix = create_group_matrix(self.grouped_features, self.input_dim)
+    
         
         #Initialize network
 
@@ -147,7 +145,6 @@ class SIMSPretraining(pl.LightningModule):
         loss = self.loss(res, x, obf_vars)
 
         #Use downstream metrics like ARI to validate the model clustering capacity.
-
         return {
             "loss": loss
         }
@@ -155,12 +152,18 @@ class SIMSPretraining(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         results = self._step(batch, "train")
         self.log(f"train_loss", results["loss"], on_epoch=True, on_step=True)
+        #Log embeddings in a list and keep...
+
         # for name, metric in self.metrics["train"].items():
         #     self.log(f"train_{name}", metric, on_epoch=True, on_step=False)
         return results["loss"]
 
 
     def on_train_epoch_end(self) -> None:
+        #for data in dataloader
+        #Get embeddings
+        #Train small KNN
+
         # for name,metric in self.metrics["train"].items():
         #     self.log(f"train_{name}", metric, on_epoch=True, on_step=False)
         return
@@ -182,7 +185,7 @@ class SIMSPretraining(pl.LightningModule):
             optimizer = self.optim_params.pop("optimizer")
             optimizer = optimizer(self.parameters(), **self.optim_params)
         else:
-            optimizer = torch.optim.Adam(self.parameters(), **self.optim_params)
+            optimizer = torch.optim.AdamW(self.parameters(), **self.optim_params)
         print(f"Initializing with {optimizer = }")
 
         if self.scheduler_params is not None:
@@ -255,6 +258,51 @@ class SIMSPretraining(pl.LightningModule):
     def predict(self, x):
         return
     
+    # def get_embeddings(self, x):
+    #     res, embedded_x, obf_vars = self.network(x)
+    #     return embedded_x
+    
+    def embedding_step(self, batch, batch_idx):
+        if isinstance(batch, (tuple, list)) and len(batch) == 2:
+            x, y = batch
+        else:
+            raise ValueError(f"Unexpected batch format: {type(batch)}")
+        
+        res, embedded_x, obf_vars = self.network(x)
+        #res, embedded_x, obf_vars = self.forward(x)
+        return embedded_x
+
+    def get_embeddings(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+        print("Parsing inference data...")
+        loader = self._parse_data(
+            inference_data,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            rows=rows,
+            currgenes=currgenes,
+            refgenes=refgenes,
+            **kwargs
+        )
+
+        prev_network_state = self.network.training
+        self.network.eval()
+
+        embeddings = []
+        batch_size = loader.batch_size
+        for idx, X in enumerate(tqdm(loader)):
+            embeddings.append(self.embedding_step(X, idx))
+        
+        embeddings = torch.cat(embeddings, dim=0)
+
+        # if network was in training mode before inference, set it back to that
+        if prev_network_state:
+            self.network.train()
+
+        return embeddings
+
+
+
+
     #Save the pretrained model
     def save_model(self):
         """Save the model as a ckpt file"""

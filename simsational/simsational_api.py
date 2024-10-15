@@ -1,6 +1,6 @@
 import pathlib
 from typing import Union
-
+import torch
 import anndata as an
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, Timer, EarlyStopping
@@ -52,7 +52,7 @@ class SIMSPretrainedAPI:
             input_dim=self.datamodule.input_dim, 
             #output_dim=self.datamodule.output_dim, 
             genes=self.datamodule.genes,
-            cells=self.datamodule.cells,
+            #cells=self.datamodule.cells,
             label_encoder=self.datamodule.label_encoder,
             *args, 
             **kwargs
@@ -85,3 +85,20 @@ class SIMSPretrainedAPI:
         self._trainer.fit(self.model, datamodule=self.datamodule)
 
         print('Finished training')
+
+    def predict(self, data: an.AnnData, *args, **kwargs):
+        
+        return
+    
+    def get_embeddings(self, inference_data: an.AnnData, *args, **kwargs):
+        
+        if not hasattr(self, 'model'):
+            raise UnconfiguredModelError(
+                """The model attribute is not configured. This is likely 
+                because you are running the get_embeddings method after re-initializing the 
+                SIMS class. Reinitialize the SIMS class with the weights_path
+                pointing to the .ckpt file to continue."""
+            )
+        #Test it like this but maybe change it to talk to Julian about making it good
+        self.embeddings = self.model.get_embeddings(inference_data, *args, **kwargs)
+        return self.embeddings
