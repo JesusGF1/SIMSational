@@ -263,14 +263,12 @@ class SIMSPretraining(pl.LightningModule):
     #     return embedded_x
     
     def embedding_step(self, batch, batch_idx):
-        if isinstance(batch, (tuple, list)) and len(batch) == 2:
-            x, y = batch
-        else:
-            raise ValueError(f"Unexpected batch format: {type(batch)}")
-        
-        res, embedded_x, obf_vars = self.network(x)
+        x = batch
+        embedded_x = self.network.embedder(x)
+        steps_out, _ = self.network.encoder(embedded_x)
+        #res, embedded_x, obf_vars = self.network(x)
         #res, embedded_x, obf_vars = self.forward(x)
-        return embedded_x
+        return steps_out
 
     def get_embeddings(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
         print("Parsing inference data...")
@@ -291,7 +289,7 @@ class SIMSPretraining(pl.LightningModule):
         batch_size = loader.batch_size
         for idx, X in enumerate(tqdm(loader)):
             embeddings.append(self.embedding_step(X, idx))
-        
+        breakpoint()
         embeddings = torch.cat(embeddings, dim=0)
 
         # if network was in training mode before inference, set it back to that
