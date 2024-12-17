@@ -289,7 +289,7 @@ class SIMSPretraining(pl.LightningModule):
         batch_size = loader.batch_size
         for idx, X in enumerate(tqdm(loader)):
             embeddings.append(self.embedding_step(X, idx))
-        breakpoint()
+        #breakpoint()
         embeddings = torch.cat(embeddings, dim=0)
 
         # if network was in training mode before inference, set it back to that
