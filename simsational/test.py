@@ -5,6 +5,10 @@ from pytorch_lightning.loggers import WandbLogger
 import umap
 import numpy as np
 import matplotlib.pyplot as plt
+from numba.core.errors import NumbaDeprecationWarning
+import warnings
+warnings.filterwarnings("ignore", category=NumbaDeprecationWarning)
+
 
 def test_simsational_pretraining():
     adata = sc.datasets.pbmc3k_processed()
@@ -15,24 +19,21 @@ def test_simsational_pretraining():
     print(adata.var)
     adata.obs['cell_type'] = adata.obs['louvain'].astype(str)
     print("Setting up the pretraining model")
-    model = SIMSPretrainedAPI(data=adata, class_label='cell_type', batch_size=8)
-    logger = WandbLogger(name="simsational_pretraining",project="simsational")
-    model.setup_trainer(accelerator="cpu", devices=1,limit_train_batches=1,limit_val_batches=1,max_epochs=10,
+    model = SIMSPretrainedAPI(data=adata, class_label='cell_type', batch_size=16,pretraining_ratio=0.85)
+    logger = WandbLogger(name="simsational_pretraining_add_eps_to_batchstd_and_feature_scaled_and_min_std",project="simsational")
+    model.setup_trainer(accelerator="cpu", devices=1,limit_train_batches=1,limit_val_batches=1,max_epochs=200,
                         logger=logger)
     print("training model")
     model.train()
     print("model trained")
     #Now model predict to get embeddings
-    
     embeddings = model.get_embeddings(adata)
-    print("Embeddings")
-    print(embeddings)
-    print(embeddings.shape)
-    print("UMAP")
+    #print(embeddings)
+    print("Embeddings",embeddings.shape)
     embeddings = embeddings.detach().numpy()
     umap_embeddings = umap.UMAP().fit_transform(embeddings)
-    print(umap_embeddings)
-    print(umap_embeddings.shape)
+    #print(umap_embeddings)
+    print("Umap shape",umap_embeddings.shape)
     #Now plot the UMAP
     adata.obs['cell_type'] = adata.obs['cell_type'].astype('category')
     plt.figure(figsize=(10,10))

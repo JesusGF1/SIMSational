@@ -1,6 +1,8 @@
 from pytorch_tabnet.tab_network import TabNetPretraining
 from pytorch_tabnet.utils import create_group_matrix, create_explain_matrix
-from pytorch_tabnet.metrics import UnsupervisedLoss
+
+#from pytorch_tabnet.metrics import UnsupervisedLoss . I am substituting this with my own loss function
+
 import pytorch_lightning as pl
 import torch
 from typing import Callable, List, Union
@@ -14,11 +16,57 @@ import numpy as np
 from tqdm import tqdm
 
 
+def UnsupervisedLossSimsational(y_pred, embedded_x, obf_vars, eps=1e-9)#,min_std=1e-4):
+    """
+    Implements unsupervised loss function.
+    This differs from orginal paper as it's scaled to be batch size independent
+    and number of features reconstructed independent (by taking the mean)
+
+    Parameters
+    ----------
+    y_pred : torch.Tensor or np.array
+        Reconstructed prediction (with embeddings)
+    embedded_x : torch.Tensor
+        Original input embedded by network
+    obf_vars : torch.Tensor
+        Binary mask for obfuscated variables.
+        1 means the variable was obfuscated so reconstruction is based on this.
+    eps : float
+        A small floating point to avoid ZeroDivisionError
+        This can happen in degenerated case when a feature has only one value
+
+    Returns
+    -------
+    loss : torch float
+        Unsupervised loss, average value over batch samples.
+    """
+    errors = y_pred - embedded_x
+    print("I am using the SIMSational loss function")
+    reconstruction_errors = torch.mul(errors, obf_vars) ** 2
+    batch_means = torch.mean(embedded_x, dim=0)
+    # avoid division by zero / Julian doesn't think this works.
+    batch_means[batch_means == 0] = 1
+    #batch_stds = torch.std(embedded_x, dim=0) ** 2 #Original
+    batch_stds = torch.std(embedded_x, dim=0) ** 2 + eps #Adding eps to batch_stds could help stabilize it
+    batch_stds[batch_stds == 0] = batch_means[batch_stds == 0]
+    # Replace both zeros and very small values with threshold
+    #batch_stds = torch.clamp(batch_stds, min=min_std)
+    #features_loss = torch.matmul(reconstruction_errors, 1 / batch_stds) #Loss per sample: Original
+    features_loss = torch.matmul(reconstruction_errors, 1 / batch_stds) / embedded_x.shape[1] #Loss per sample, scaled by number of features
+    # compute the number of obfuscated variables to reconstruct
+    nb_reconstructed_variables = torch.sum(obf_vars, dim=1)
+    
+    # take the mean of the reconstructed variable errors
+    features_loss = features_loss / (nb_reconstructed_variables + eps)
+    # here we take the mean per batch, contrary to the paper
+    loss = torch.mean(features_loss) #Mean accross samples
+    return loss
+
 class SIMSPretraining(pl.LightningModule):
     def __init__(self,
         #All of these come straight from the pretrainer class
         input_dim,
-        pretraining_ratio=0.2,
+        pretraining_ratio=0.8,
         n_d=8,
         n_a=8,
         n_steps=3,
@@ -44,7 +92,7 @@ class SIMSPretraining(pl.LightningModule):
         #But for our first implementation we will not use this. Default to None for now
         grouped_features: List[List[int]] = [],
 
-        loss: Callable = None, #Defaults to UnsupervisedLoss
+        loss: Callable = None, #Defaults to UnsupervisedLossSimsational
         optim_params=None, #Defaults to AdamW 
         scheduler_params=None, #Defaults to ReduceLROnPlateau
         ):
@@ -58,9 +106,9 @@ class SIMSPretraining(pl.LightningModule):
 
         #Add loss
         self.loss = loss
-        #Defaults to UnsupervisedLoss
+        #Defaults to UnsupervisedLossSimsational
         if loss is None:
-            self.loss = UnsupervisedLoss
+            self.loss = UnsupervisedLossSimsational
         
         #Add metrics/ Log embeddings and then have a function to calculate the ARI
         self.metrics = {
@@ -73,8 +121,8 @@ class SIMSPretraining(pl.LightningModule):
             if optim_params is not None
             else {
                 "optimizer": torch.optim.AdamW,
-                "lr": 0.001,
-                "weight_decay": 0.01,
+                "lr": 0.0001,
+                "weight_decay": 0.001,
             }
         )
         #Add scheduler params
