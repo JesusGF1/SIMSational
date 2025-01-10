@@ -16,7 +16,7 @@ import numpy as np
 from tqdm import tqdm
 
 
-def UnsupervisedLossSimsational(y_pred, embedded_x, obf_vars, eps=1e-9)#,min_std=1e-4):
+def UnsupervisedLossSimsational(y_pred, embedded_x, obf_vars, eps=1e-9,min_std=1e-4):
     """
     Implements unsupervised loss function.
     This differs from orginal paper as it's scaled to be batch size independent
@@ -41,7 +41,7 @@ def UnsupervisedLossSimsational(y_pred, embedded_x, obf_vars, eps=1e-9)#,min_std
         Unsupervised loss, average value over batch samples.
     """
     errors = y_pred - embedded_x
-    print("I am using the SIMSational loss function")
+    #print("I am using the SIMSational loss function")
     reconstruction_errors = torch.mul(errors, obf_vars) ** 2
     batch_means = torch.mean(embedded_x, dim=0)
     # avoid division by zero / Julian doesn't think this works.
@@ -50,7 +50,7 @@ def UnsupervisedLossSimsational(y_pred, embedded_x, obf_vars, eps=1e-9)#,min_std
     batch_stds = torch.std(embedded_x, dim=0) ** 2 + eps #Adding eps to batch_stds could help stabilize it
     batch_stds[batch_stds == 0] = batch_means[batch_stds == 0]
     # Replace both zeros and very small values with threshold
-    #batch_stds = torch.clamp(batch_stds, min=min_std)
+    batch_stds = torch.clamp(batch_stds, min=min_std)
     #features_loss = torch.matmul(reconstruction_errors, 1 / batch_stds) #Loss per sample: Original
     features_loss = torch.matmul(reconstruction_errors, 1 / batch_stds) / embedded_x.shape[1] #Loss per sample, scaled by number of features
     # compute the number of obfuscated variables to reconstruct
@@ -104,11 +104,11 @@ class SIMSPretraining(pl.LightningModule):
         # Stuff needed for training
         self.input_dim = input_dim
 
-        #Add loss
-        self.loss = loss
         #Defaults to UnsupervisedLossSimsational
         if loss is None:
             self.loss = UnsupervisedLossSimsational
+        else:
+            self.loss = loss
         
         #Add metrics/ Log embeddings and then have a function to calculate the ARI
         self.metrics = {
